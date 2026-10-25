@@ -1,0 +1,59 @@
+# Enterprise Dependabot Configuration
+version: 2
+updates:
+  # Maintain dependencies for GitHub Actions workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "cloud-platform-leads"
+    labels:
+      - "dependencies"
+      - "ci-cd"
+      - "automated-pr"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
+  # Maintain Terraform providers across environments
+  - package-ecosystem: "terraform"
+    directory: "/environments/preprod"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:30"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "devops-engineers"
+    labels:
+      - "dependencies"
+      - "terraform"
+      - "automated-pr"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
+  - package-ecosystem: "terraform"
+    directory: "/environments/prod"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "devops-engineers"
+    labels:
+      - "dependencies"
+      - "terraform"
+      - "production"
+      - "automated-pr"
+    commit-message:
+      prefix: "chore"
+      include: "scope"

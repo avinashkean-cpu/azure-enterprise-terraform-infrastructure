@@ -1,0 +1,54 @@
+name: 🏗️ Infrastructure Change Request (RFC)
+description: Propose an architecture enhancement, new Azure resource, or module refactor.
+title: "[RFC]: "
+labels: ["enhancement", "infrastructure", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for submitting an Infrastructure Change Request. Please provide detailed technical context to assist architectural review.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary of Proposed Change
+      description: Brief one-line explanation of the architectural change or new feature.
+      placeholder: "e.g. Deploy Azure Firewall module into Spoke VNet"
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Target Environment
+      description: Which environment(s) will this change affect?
+      multiple: true
+      options:
+        - preprod
+        - prod
+        - shared modules
+    validations:
+      required: true
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Business & Architectural Motivation
+      description: Why is this change necessary? What problem or scaling requirement does it solve?
+    validations:
+      required: true
+  - type: textarea
+    id: architecture_spec
+    attributes:
+      label: Technical & Resource Specification
+      description: Detail the specific Azure resources, SKUs, subnet allocations, or module inputs required.
+    validations:
+      required: true
+  - type: dropdown
+    id: blast_radius
+    attributes:
+      label: Estimated Blast Radius
+      options:
+        - Low (Zero downtime, additive resource)
+        - Medium (Configuration change, low risk)
+        - High (Network reroute, subnet resizing, security policy updates)
+        - Critical (State migration, database/VM recreation)
+    validations:
+      required: true

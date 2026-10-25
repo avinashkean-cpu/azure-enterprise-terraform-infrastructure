@@ -1,0 +1,38 @@
+name: 🐛 Infrastructure Bug / Drift Report
+description: Report unexpected Terraform errors, deployment failures, or configuration drifts.
+title: "[BUG]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please use this form to report bugs in Terraform modules or pipeline automation.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment Affected
+      placeholder: "e.g. preprod, prod, or local development"
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Detailed explanation of what failed during execution.
+    validations:
+      required: true
+  - type: textarea
+    id: terraform_log
+    attributes:
+      label: Terraform Error Log / Stack Trace
+      description: Paste the exact error output from `terraform plan` or `terraform apply`.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      description: What was expected to occur?
+    validations:
+      required: true

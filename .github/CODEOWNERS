@@ -1,0 +1,23 @@
+# Enterprise CODEOWNERS Policy
+# Lines starting with '#' are comments.
+# Each line is a pattern followed by one or more owners.
+
+# Default catch-all code owners for infrastructure
+* @avinashkean-cpu
+
+# Specific Module Ownership
+/modules/azurerm_key_vault/             @security-architects @cloud-platform-leads
+/modules/azurerm_network_security_group/ @security-architects @network-leads
+/modules/azurerm_application_gateway/   @network-leads @cloud-platform-leads
+/modules/azurerm_bastion/               @security-architects @network-leads
+/modules/azurerm_virtual_network/       @network-leads
+/modules/azurerm_subnet/                @network-leads
+
+# Environment Deployment Approvals
+/environments/preprod/                  @devops-engineers @cloud-platform-leads
+/environments/prod/                     @principal-cloud-architect @cloud-operations-leads
+
+# CI/CD and Governance Configuration
+/.github/                               @devops-engineers @cloud-platform-leads
+/azure-pipelines.yml                    @devops-engineers
+/SECURITY.md                            @security-architects

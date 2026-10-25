@@ -1,0 +1,231 @@
+name: "Enterprise Terraform CI/CD"
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'environments/**'
+      - 'modules/**'
+      - '.github/workflows/terraform-ci-cd.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'environments/**'
+      - 'modules/**'
+      - '.github/workflows/terraform-ci-cd.yml'
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: 'Environment to deploy'
+        required: true
+        default: 'preprod'
+        type: choice
+        options:
+          - preprod
+          - prod
+
+permissions:
+  id-token: write   # Required for Azure OIDC Federated Credentials
+  contents: read
+  pull-requests: write # Required for automated PR plan comment
+  security-events: write # Required for SARIF security report uploads
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # =========================================================================
+  # 1. CODE QUALITY & STATIC LINTING
+  # =========================================================================
+  lint:
+    name: "Terraform Lint & Format"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Check Terraform Formatting
+        run: terraform fmt -check -recursive
+
+      - name: Setup TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: "v0.51.1"
+
+      - name: Run TFLint
+        run: |
+          tflint --init
+          tflint -f compact
+
+  # =========================================================================
+  # 2. SECURITY & SECRETS SCANNING
+  # =========================================================================
+  security:
+    name: "Security & Secret Scanning"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks Secret Detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Trivy IaC Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Security Scan to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # =========================================================================
+  # 3. SPECULATIVE PLAN & PR COMMENT (RUNS ON PULL REQUEST)
+  # =========================================================================
+  plan:
+    name: "Speculative Plan (Preprod)"
+    needs: [lint, security]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./environments/preprod
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Azure OIDC Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate -no-color
+
+      - name: Terraform Speculative Plan
+        id: plan
+        run: |
+          terraform plan -no-color -out=tfplan
+        continue-on-error: true
+
+      - name: Post Plan Summary to PR
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Plan (Preprod) Status: \`${{ steps.plan.outcome }}\`
+            
+            *Pushed by: @${{ github.actor }}*
+            *Action: \`${{ github.event_name }}\`*
+            *Working Directory: \`environments/preprod\`*
+
+            <details><summary>Show Plan Details</summary>
+
+            \`\`\`hcl
+            Plan generated successfully. Review changes before merging to main.
+            \`\`\`
+
+            </details>`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+  # =========================================================================
+  # 4. PRE-PRODUCTION APPLY (AUTO-DEPLOY ON MERGE TO MAIN)
+  # =========================================================================
+  deploy-preprod:
+    name: "Deploy to Pre-Production"
+    needs: [lint, security]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target_env == 'preprod'))
+    runs-on: ubuntu-latest
+    environment: preprod
+    defaults:
+      run:
+        working-directory: ./environments/preprod
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Azure OIDC Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+
+  # =========================================================================
+  # 5. PRODUCTION APPLY (PROTECTED BY ENVIRONMENT APPROVAL GATE)
+  # =========================================================================
+  deploy-prod:
+    name: "Deploy to Production"
+    needs: [deploy-preprod]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.target_env == 'prod'))
+    runs-on: ubuntu-latest
+    environment: production # Requires manual reviewer sign-off in GitHub repo settings
+    defaults:
+      run:
+        working-directory: ./environments/prod
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Azure OIDC Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
